@@ -80,6 +80,14 @@ at once: pass through an echo-only rune to open the far gate *and* start the bri
 platform, then finish standing on a pressure plate to raise the near gate. Neither
 the player alone nor a single-purpose recording can solve it.
 
+**Level 5 — The Time Warden — is the endgame.** The boss is permanently shielded:
+every hit is nullified and it never staggers, so it cannot be worn down. Its shield
+drops only while an arena plate is held, and that plate sits far outside the
+Warden's firing envelope. Standing on it yourself means you cannot reach the boss;
+fighting the boss means the shield nullifies everything. The only answer is to
+**leave a memory holding the plate and fight alongside your own past** — and when
+that echo expires mid-fight, you have to author a new one under fire.
+
 ---
 
 ## Current status
@@ -95,25 +103,46 @@ the project directive). It is honest about what exists:
 - Combat: light/heavy attacks with wind-up → active → recovery frames, directional
   block with damage reduction, dodge and roll with invulnerability frames, hurt,
   death
-- Two enemy archetypes on a 7-state AI (`IDLE, PATROL, ALERT, CHASE, ATTACK, HURT,
-  DEAD`) with ledge/wall probing, data-driven stats, and echo-baiting
+- Four enemy archetypes on a shared 7-state AI
+  (`IDLE, PATROL, ALERT, CHASE, ATTACK, HURT, DEAD`) with ledge/wall probing,
+  data-driven stats, ranged stand-off behaviour, echo-baiting and stagger immunity
 - **The full Temporal Echo system** — recorder, snapshots, deterministic replay,
-  event replay, energy economy, lifetime and capacity limits
+  event replay, energy economy, lifetime and capacity limits, plus per-level rule
+  tiers (8 s / 1 echo → 12 s / 2 echoes)
 - Reusable puzzle framework: `Activator` → `PressurePlate` / `Lever` /
-  `TemporalSwitch`, driving `Door` / `TimedGate` / `MovingPlatform`
-- `Hazard`, `Checkpoint`, `Ladder`, `LevelExit`
-- Two data-driven levels, HUD, title / pause / level-complete / victory screens
-- A headless test suite of **50 assertions**, plus a one-command verification gate
+  `TemporalSwitch`, driving `Door` / `TimedGate` / `MovingPlatform`, with
+  multi-source all-of wiring
+- `Hazard`, `Checkpoint`, `Ladder`, `LevelExit`, `Projectile`
+- **Five data-driven levels**, ending in a boss whose shield only opens for a
+  Temporal Echo
+- HUD (with a boss health bar), title / pause / level-complete / victory screens
+- A headless test suite of **116 assertions**, plus a one-command verification gate
 
 **Not yet implemented** (planned, not faked — see [Roadmap](#roadmap))
 
 - Audio of any kind (no audio assets exist yet)
-- Levels 3 and 4, and the Time Warden boss encounter
-- The third enemy archetype (`TemporalSentinel`)
 - Persistence of checkpoint progress to disk
 - Gamepad support, sprite animation, export builds, and the gameplay video
+- A fourth level tier beyond the two-echo puzzles (the engine supports it; the
+  content does not exist yet)
 
 ---
+
+## Levels
+
+| # | Name | Teaches / tests |
+|---|---|---|
+| 1 | The Collapsing Gate | Movement, gaps, hazards, interaction, the **first echo** — no combat |
+| 2 | Hall of Echoes | One recording satisfying **two mechanisms** |
+| 3 | The Broken Courtyard | Combat, hazards and an echo lock **combined** |
+| 4 | Clockwork Sanctum | **Two echoes**, three simultaneous sources (12 s / 2-echo tier) |
+| 5 | The Time Warden | Boss whose shield only opens for a memory |
+
+Boot a specific level without the menu:
+
+```bash
+godot --path . -- --level=4      # 1-based
+```
 
 ## Controls
 
@@ -170,8 +199,8 @@ It exits non-zero on any failure, so it works as a CI step. Current status:
 
 ```
 ==> 1/3 Importing project          ok
-==> 2/3 Booting levels headless    level 1 ok, level 2 ok
-==> 3/3 Running test suite         50 passed, 0 failed
+==> 2/3 Booting levels headless    levels 1-5 ok
+==> 3/3 Running test suite         116 passed, 0 failed
 ALL CHECKS PASSED
 ```
 
@@ -215,6 +244,7 @@ scripts/
   main/                 Bootstrap + QA level shortcut
   systems/              GameManager, EventBus, GameLayers, InputActions,
                         Health, Hitbox, Hurtbox, Palette
+  combat/               Projectile
   temporal/             TemporalManager, Recorder, Snapshot, Echo, Config
   player/               Player + PlayerStateMachine + PlayerState
     states/             One file per state (13 total)
@@ -270,7 +300,6 @@ Stated plainly, because a claim of completeness that is not true is worse than a
 admitted gap.
 
 - **No audio.** No sound effects or music exist yet; the audio phase has not begun.
-- **Two levels.** Levels 3 and 4 and the boss are not built.
 - **Visuals are procedural.** Every character and prop is drawn with `_draw()` in a
   coherent palette, not sprite animation. This is a deliberate art direction, but it
   is not final-production art.
@@ -278,9 +307,12 @@ admitted gap.
 - **Progress is session-only.** Checkpoints reset when the game is closed; there is
   no save file.
 - **Not verified with human input.** The headless suite proves systems, wiring and
-  determinism, but no automated test can confirm the game *feels* good to play. The
-  feel values (acceleration, coyote time, jump height) are tuned by reasoning and
-  should be play-tested.
+  determinism, but no automated test can confirm the game *feels* good to play, and
+  none can confirm that a level is actually completable by a person. The feel values
+  (acceleration, coyote time, jump height), the jump distances between platforms, and
+  the difficulty curve of all five levels are tuned by reasoning and arithmetic and
+  **must** be play-tested before submission. Analysis of every jump arc is recorded
+  in [`docs/QA_REPORT.md`](docs/QA_REPORT.md).
 - **Export builds untested.** No Windows or web build has been produced from this
   repository.
 - **The gameplay video does not exist.** Recording it requires running the game with
@@ -297,7 +329,7 @@ admitted gap.
 | 4 | Temporal Echo system | Done |
 | 5 | Puzzle system | Done |
 | 6 | Vertical slice (Levels 1–2) | Done |
-| 7 | Levels 3–4, third enemy, Time Warden boss | Not started |
+| 7 | Levels 3–4, ranged archetype, Time Warden boss | Done |
 | 8 | Visual polish, transitions | Not started |
 | 9 | Audio integration | Not started |
 | 10 | Persistence | Not started |

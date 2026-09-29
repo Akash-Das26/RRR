@@ -22,6 +22,12 @@ signal echo_created(echo: Node, recorded_duration: float)
 signal echo_expired(echo: Node)
 signal echo_event_replayed(echo: Node, event_id: StringName)
 
+# --- Boss -------------------------------------------------------------------
+signal boss_engaged(display_name: String, current: int, maximum: int)
+signal boss_health_changed(current: int, maximum: int)
+signal boss_shield_changed(shielded: bool)
+signal boss_defeated
+
 # --- World / progression ----------------------------------------------------
 signal objective_changed(text: String)
 signal checkpoint_reached(checkpoint_id: StringName)

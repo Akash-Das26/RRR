@@ -3,16 +3,18 @@ extends Node2D
 ## Turns a level [Dictionary] into a live scene tree.
 ##
 ## Assignment is deliberate: the level data holds only [i]what[/i] exists and
-## [i]where[/i], while this class knows how to instantiate each prop type. Puzzle
-## wiring is resolved by string id before any node enters the tree, so every
-## [code]_ready[/code] sees its final source list and no mechanism can boot
-## half-wired.
+## [i]where[/i], while this class knows how to instantiate each prop type.
+##
+## The important sequencing detail is that every prop and enemy is created but
+## [b]not parented[/b] until all wiring has been resolved. Wiring is by string id
+## across props [i]and[/i] enemies (the boss listens to an arena plate), and a
+## mechanism must see its complete source list the first time it runs —
+## otherwise its very first frame is computed from a half-wired state.
 
 ## Prop type id -> script. Adding a prop type is one line here plus the class.
 ##
 ## These are functions rather than [code]const[/code] dictionaries because
-## GDScript does not accept a class reference as a constant expression. Building
-## the small dictionary once per level build costs nothing measurable.
+## GDScript does not accept a class reference as a constant expression.
 static func object_types() -> Dictionary:
 	return {
 		"pressure_plate": PressurePlate,
@@ -32,11 +34,13 @@ static func enemy_types() -> Dictionary:
 	return {
 		"palace_guard": PalaceGuard,
 		"shadow_echo": ShadowEcho,
+		"temporal_sentinel": TemporalSentinel,
+		"time_warden": TimeWarden,
 	}
 
 
-## Builds the level and returns metadata the caller needs: the spawn point and
-## the camera bounds.
+## Builds the level and returns metadata the caller needs: spawn point, camera
+## bounds, and any per-level Temporal Echo rule overrides.
 func build(data: Dictionary) -> Dictionary:
 	var bounds: Rect2 = data.get("bounds", Rect2(-400.0, -1200.0, 4000.0, 2000.0))
 
@@ -46,12 +50,23 @@ func build(data: Dictionary) -> Dictionary:
 	add_child(backdrop)
 
 	_create_platforms(data.get("platforms", []))
-	var registry := _create_objects(data.get("objects", []))
-	_create_enemies(data.get("enemies", []))
+
+	var registry: Dictionary = {}
+	var pending: Array[Node2D] = []
+	_prepare_objects(data.get("objects", []), registry, pending)
+	_prepare_enemies(data.get("enemies", []), registry, pending)
+
+	# Wiring must complete before anything enters the tree.
+	_resolve_wiring(data.get("objects", []) as Array, registry)
+	_resolve_wiring(data.get("enemies", []) as Array, registry)
+
+	for node: Node2D in pending:
+		add_child(node)
 
 	return {
 		"spawn": data.get("spawn", Vector2(160.0, 400.0)),
 		"bounds": bounds,
+		"temporal": data.get("temporal", {}),
 	}
 
 
@@ -85,11 +100,8 @@ func _platform_kind(name: String) -> Platform.Kind:
 
 # --- Props ------------------------------------------------------------------
 
-func _create_objects(specs: Array) -> Dictionary:
-	var registry: Dictionary = {}
-	var created: Array = []
+func _prepare_objects(specs: Array, registry: Dictionary, pending: Array[Node2D]) -> void:
 	var types := object_types()
-
 	for spec: Dictionary in specs:
 		var type_id := String(spec.get("type", ""))
 		if not types.has(type_id):
@@ -101,21 +113,8 @@ func _create_objects(specs: Array) -> Dictionary:
 		node.name = "%s_%s" % [type_id, spec.get("id", registry.size())]
 		node.position = spec.get("pos", Vector2.ZERO)
 		_apply_params(node, type_id, spec.get("params", {}))
-
-		var id := String(spec.get("id", ""))
-		if not id.is_empty():
-			if registry.has(id):
-				push_error("LevelBuilder: duplicate object id '%s'." % id)
-			registry[id] = node
-
-		created.append({"node": node, "spec": spec})
-
-	# Wiring happens before anything enters the tree so _ready() sees final state.
-	_resolve_wiring(specs, registry)
-	for entry: Dictionary in created:
-		add_child(entry["node"])
-
-	return registry
+		_register(registry, spec, node)
+		pending.append(node)
 
 
 func _apply_params(node: Node2D, type_id: String, params: Dictionary) -> void:
@@ -123,7 +122,15 @@ func _apply_params(node: Node2D, type_id: String, params: Dictionary) -> void:
 		"pressure_plate":
 			var plate := node as PressurePlate
 			plate.configure(params.get("size", Vector2(76.0, 14.0)))
-			plate.trigger_filter = params.get("trigger_filter", PressurePlate.Trigger.ANY_ACTOR)
+			# Authored as a word rather than an enum index: level data should not
+			# break silently when the Trigger enum gains a member.
+			match String(params.get("filter", "any")):
+				"echo":
+					plate.trigger_filter = PressurePlate.Trigger.ECHO_ONLY
+				"player":
+					plate.trigger_filter = PressurePlate.Trigger.PLAYER_ONLY
+				_:
+					plate.trigger_filter = PressurePlate.Trigger.ANY_ACTOR
 			plate.release_delay = params.get("release_delay", 0.0)
 		"temporal_switch":
 			(node as TemporalSwitch).configure(params.get("size", Vector2(40.0, 52.0)))
@@ -146,10 +153,11 @@ func _apply_params(node: Node2D, type_id: String, params: Dictionary) -> void:
 			platform.oscillate = params.get("oscillate", true)
 		"hazard":
 			var hazard := node as Hazard
+			var hazard_kind: Hazard.Kind = Hazard.Kind.TEMPORAL_RUPTURE if String(params.get("kind", "spikes")) == "rupture" else Hazard.Kind.SPIKES
 			hazard.configure(
 				params.get("size", Vector2(64.0, 30.0)),
 				params.get("damage", 20),
-				params.get("kind", Hazard.Kind.SPIKES)
+				hazard_kind
 			)
 		"checkpoint":
 			(node as Checkpoint).configure(String(params.get("checkpoint_id", "cp")), params.get("size", Vector2(56.0, 96.0)))
@@ -159,6 +167,46 @@ func _apply_params(node: Node2D, type_id: String, params: Dictionary) -> void:
 			(node as LevelExit).configure(params.get("size", Vector2(64.0, 140.0)))
 		_:
 			push_warning("LevelBuilder: no parameter mapping for object type '%s'." % type_id)
+
+
+# --- Enemies ----------------------------------------------------------------
+
+func _prepare_enemies(specs: Array, registry: Dictionary, pending: Array[Node2D]) -> void:
+	var types := enemy_types()
+	var index := 0
+	for spec: Dictionary in specs:
+		var type_id := String(spec.get("type", ""))
+		if not types.has(type_id):
+			push_error("LevelBuilder: unknown enemy type '%s'." % type_id)
+			continue
+
+		var script: GDScript = types[type_id]
+		var enemy: EnemyBase = script.new()
+		enemy.name = "enemy_%s_%d" % [type_id, index]
+		enemy.position = spec.get("pos", Vector2.ZERO)
+
+		# Allow per-instance health overrides without a whole new stats resource.
+		# Stats are built eagerly here because _make_default_stats() normally runs
+		# in _ready(), which has not happened yet.
+		if spec.has("health"):
+			var stats: EnemyStats = enemy.stats if enemy.stats != null else enemy._make_default_stats()
+			stats.max_health = int(spec["health"])
+			enemy.stats = stats
+
+		_register(registry, spec, enemy)
+		pending.append(enemy)
+		index += 1
+
+
+# --- Wiring -----------------------------------------------------------------
+
+func _register(registry: Dictionary, spec: Dictionary, node: Node2D) -> void:
+	var id := String(spec.get("id", ""))
+	if id.is_empty():
+		return
+	if registry.has(id):
+		push_error("LevelBuilder: duplicate id '%s'; wiring would be ambiguous." % id)
+	registry[id] = node
 
 
 func _resolve_wiring(specs: Array, registry: Dictionary) -> void:
@@ -182,26 +230,4 @@ func _resolve_wiring(specs: Array, registry: Dictionary) -> void:
 				push_error("LevelBuilder: '%s' listens to unknown id '%s'." % [id, source_id])
 				continue
 			sources.append(source)
-		node.bind_sources(sources, spec.get("require_all", true))
-
-
-# --- Enemies ----------------------------------------------------------------
-
-func _create_enemies(specs: Array) -> void:
-	var index := 0
-	var types := enemy_types()
-	for spec: Dictionary in specs:
-		var type_id := String(spec.get("type", ""))
-		if not types.has(type_id):
-			push_error("LevelBuilder: unknown enemy type '%s'." % type_id)
-			continue
-		var script: GDScript = types[type_id]
-		var enemy: EnemyBase = script.new()
-		enemy.name = "Enemy_%s_%d" % [type_id, index]
-		enemy.position = spec.get("pos", Vector2.ZERO)
-		if spec.has("health"):
-			var stats := enemy.stats if enemy.stats != null else enemy._make_default_stats()
-			stats.max_health = int(spec["health"])
-			enemy.stats = stats
-		add_child(enemy)
-		index += 1
+		node.call("bind_sources", sources, spec.get("require_all", true))

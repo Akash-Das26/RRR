@@ -13,6 +13,16 @@ enum AIState { IDLE, PATROL, ALERT, CHASE, ATTACK, HURT, DEAD }
 const ALERT_DURATION: float = 0.35
 ## Ledge/wall probes are kept short so enemies stop at edges rather than walking off.
 const LEDGE_PROBE_DEPTH: float = 34.0
+## How far ahead of the body the ledge probe looks.
+const LEDGE_PROBE_OFFSET: float = 12.0
+## How far ahead of the body the wall probe reaches.
+const WALL_PROBE_LENGTH: float = 22.0
+## How far in front of the body the weapon hitbox sits.
+##
+## This MUST stay well inside [member EnemyStats.attack_range], otherwise the
+## enemy commits to an attack it physically cannot land — it stops at range,
+## swings at empty air, and the player never has to respect it.
+const WEAPON_REACH: float = 26.0
 
 @export var stats: EnemyStats
 
@@ -27,6 +37,8 @@ var facing: int = -1
 var _origin: Vector2 = Vector2.ZERO
 var _state_time: float = 0.0
 var _target: Node2D = null
+## Guards against a ranged attack firing more than once per wind-up cycle.
+var _attack_fired: bool = false
 var _anim_time: float = 0.0
 var _hurt_flash: float = 0.0
 var _death_fade: float = 1.0
@@ -50,6 +62,10 @@ func _ready() -> void:
 
 	_build_body()
 	_build_components()
+	# Aim the probes and the weapon before the first state runs. Skipping this
+	# leaves the wall probe as a zero-length ray and the weapon hitbox sitting on
+	# the enemy's own chest until something happens to change its facing.
+	_update_probes()
 	_enter(AIState.PATROL)
 
 
@@ -143,6 +159,7 @@ func _build_components() -> void:
 func _enter(next: AIState) -> void:
 	ai_state = next
 	_state_time = 0.0
+	_attack_fired = false
 	attack_hitbox.set_active(false)
 
 	match ai_state:
@@ -201,6 +218,11 @@ func _state_chase(delta: float) -> void:
 
 	_face_target()
 	var distance := global_position.distance_to(target.global_position)
+
+	if stats.ranged:
+		_chase_ranged(delta, target, distance)
+		return
+
 	if distance <= stats.attack_range:
 		_enter(AIState.ATTACK)
 		return
@@ -219,6 +241,43 @@ func _state_chase(delta: float) -> void:
 	move_and_slide()
 
 
+## Stand-off behaviour for ranged enemies: close in when far, retreat when
+## crowded, and hold position inside the firing band.
+##
+## The enemy steers toward a point offset from the target rather than toward the
+## target itself, which is what produces "keeps its distance" instead of
+## "walks into melee and shoots from point blank".
+func _chase_ranged(delta: float, target: Node2D, distance: float) -> void:
+	# In the firing envelope: shoot. An enemy configured not to retreat keeps
+	# firing even at point-blank range instead of endlessly backing away.
+	if distance <= stats.attack_range:
+		var comfortable: bool = distance >= stats.preferred_range * 0.55
+		if comfortable or not stats.retreat_when_crowded:
+			_enter(AIState.ATTACK)
+			return
+
+	# Aim for a spot `preferred_range` in front of the target, `hover_offset` above
+	# its feet.
+	var desired: Vector2 = target.global_position - Vector2(float(facing) * stats.preferred_range, stats.hover_offset)
+
+	if stats.uses_gravity:
+		# Gravity owns the vertical axis; only steer horizontally or the two
+		# would fight each other and the enemy would judder in place.
+		var dx: float = desired.x - global_position.x
+		if absf(dx) > 10.0:
+			velocity.x = move_toward(velocity.x, signf(dx) * stats.chase_speed, 800.0 * delta)
+		else:
+			_decelerate(delta, 1400.0)
+	else:
+		var to_desired: Vector2 = desired - global_position
+		if to_desired.length() > 10.0:
+			velocity = velocity.move_toward(to_desired.normalized() * stats.chase_speed, 800.0 * delta)
+		else:
+			_decelerate(delta, 1400.0)
+
+	move_and_slide()
+
+
 func _state_attack(delta: float) -> void:
 	_apply_gravity(delta)
 	_decelerate(delta, 1600.0)
@@ -229,13 +288,53 @@ func _state_attack(delta: float) -> void:
 	var windup := stats.attack_windup
 	var active := stats.attack_active
 	var in_window: bool = _state_time >= windup and _state_time < windup + active
-	attack_hitbox.set_active(in_window)
+
+	if stats.ranged:
+		# A ranged attack resolves once, at the start of the active window. It
+		# must NOT leave a damaging volume in the world the way a melee swing
+		# does, or the enemy would deal damage for the whole window at any range.
+		attack_hitbox.set_active(false)
+		if in_window and not _attack_fired:
+			_attack_fired = true
+			_fire_attack()
+	else:
+		attack_hitbox.set_active(in_window)
 
 	move_and_slide()
 
 	if _state_time >= stats.attack_total_time():
 		attack_hitbox.set_active(false)
 		_enter(AIState.CHASE)
+
+
+## Fires the enemy's attack.
+##
+## Melee enemies do nothing here — their damage comes from the hitbox during the
+## active window. Ranged enemies override this.
+func _fire_attack() -> void:
+	pass
+
+
+## Spawns a volley of [Projectile]s along [param direction].
+##
+## Bolts are parented to the level rather than to the enemy, so a bolt already in
+## flight is not deleted the moment its firer dies.
+func spawn_volley(direction: Vector2, count: int = -1, spread: float = -1.0) -> void:
+	var shots: int = count if count > 0 else maxi(1, stats.volley_count)
+	var arc: float = spread if spread >= 0.0 else stats.volley_spread
+	var parent := get_parent()
+	if parent == null:
+		push_error("EnemyBase.spawn_volley: '%s' has no parent to attach projectiles to." % name)
+		return
+
+	for i: int in shots:
+		var offset: float = 0.0
+		if shots > 1:
+			offset = lerpf(-arc * 0.5, arc * 0.5, float(i) / float(shots - 1))
+		var bolt := Projectile.new()
+		bolt.configure(direction.rotated(offset), stats.projectile_speed, stats.projectile_damage, stats.projectile_lifetime)
+		parent.add_child(bolt)
+		bolt.global_position = global_position + Vector2(0.0, -stats.body_size.y * 0.55)
 
 
 func _state_hurt(delta: float) -> void:
@@ -268,9 +367,13 @@ func _decelerate(delta: float, rate: float) -> void:
 	velocity.x = move_toward(velocity.x, 0.0, rate * delta)
 
 
+## Re-aims the ledge probe, the wall probe and the weapon hitbox for the current
+## facing. Called once at spawn and again every time facing changes.
 func _update_probes() -> void:
-	_ledge_probe.position.x = float(facing) * 12.0
-	_wall_probe.target_position = Vector2(float(facing) * 22.0, 0)
+	_ledge_probe.position.x = float(facing) * LEDGE_PROBE_OFFSET
+	_wall_probe.target_position = Vector2(float(facing) * WALL_PROBE_LENGTH, 0.0)
+	if attack_hitbox != null:
+		attack_hitbox.position = Vector2(float(facing) * WEAPON_REACH, 0.0)
 
 
 func _flip() -> void:
@@ -327,6 +430,12 @@ func _on_hit_taken(amount: int, source_position: Vector2) -> void:
 	_hurt_flash = 0.18
 	if health.is_dead:
 		return
+
+	if stats.stagger_immune:
+		# Large enemies keep their attack rhythm. Without this a fast attacker
+		# can cancel every wind-up and stun-lock them indefinitely.
+		return
+
 	var direction := signf(global_position.x - source_position.x)
 	velocity.x = (direction if not is_zero_approx(direction) else float(-facing)) * stats.hurt_knockback
 	velocity.y = -stats.hurt_knockback * 0.25

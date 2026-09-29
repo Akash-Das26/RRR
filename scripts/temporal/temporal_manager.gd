@@ -15,6 +15,9 @@ extends Node
 var config: TemporalConfig
 ## Current temporal energy, in [code]0..config.energy_max[/code].
 var energy: float = 0.0
+## The stock rule set. Never mutated, so a level that requests no overrides gets
+## exactly the default rules back rather than whatever the last level changed.
+var _base_config: TemporalConfig
 ## The recorder for the take in progress (never null; check [member TemporalRecorder.is_recording]).
 var recorder: TemporalRecorder
 
@@ -28,11 +31,38 @@ var _last_energy_signal: float = -1.0
 
 
 func _ready() -> void:
-	config = TemporalConfig.new()
+	_base_config = TemporalConfig.new()
+	config = _base_config.duplicate(true) as TemporalConfig
 	recorder = TemporalRecorder.new(config)
 	energy = config.energy_max
 	EventBus.temporal_energy_changed.emit(energy, config.energy_max)
 	_last_energy_signal = energy
+
+
+## Applies per-level rule overrides on top of the stock configuration.
+##
+## This is how a level opts into the directive's "later upgrade" tier — a longer
+## recording window and two simultaneous echoes — without any other level being
+## affected. Unknown keys are reported rather than silently ignored, because a
+## typo here would look exactly like a gameplay bug.
+func configure_for_level(overrides: Dictionary) -> void:
+	cancel_recording("reconfigured")
+	config = _base_config.duplicate(true) as TemporalConfig
+
+	if not overrides.is_empty():
+		var valid: Dictionary = {}
+		for property: Dictionary in config.get_property_list():
+			valid[String(property["name"])] = true
+		for key: String in overrides:
+			if not valid.has(key):
+				push_error("TemporalManager: unknown temporal rule override '%s'." % key)
+				continue
+			config.set(key, overrides[key])
+
+	recorder = TemporalRecorder.new(config)
+	energy = config.energy_max
+	_last_energy_signal = -1.0
+	_emit_energy(true)
 
 
 func _physics_process(delta: float) -> void:

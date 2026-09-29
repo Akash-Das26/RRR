@@ -9,7 +9,15 @@ extends Control
 ## Emitted with one of the action ids that [GameManager] handles.
 signal action_requested(action: StringName)
 
+const VIEWPORT_WIDTH: float = 1280.0
+const VIEWPORT_HEIGHT: float = 720.0
 const PANEL_SIZE: Vector2 = Vector2(560.0, 420.0)
+## Centred by hand rather than with an anchor preset: the logical viewport is a
+## fixed 1280x720 under canvas_items stretch, and
+## [method Control.set_anchors_preset] rewrites offsets, which would fight the
+## explicit positions the children below rely on.
+##   (1280 - 560) / 2 = 360    (720 - 420) / 2 = 150
+const PANEL_POSITION: Vector2 = Vector2(360.0, 150.0)
 
 var _panel: ColorRect
 var _title: Label
@@ -26,15 +34,15 @@ func _ready() -> void:
 func _build() -> void:
 	var scrim := ColorRect.new()
 	scrim.color = Color(0.02, 0.015, 0.04, 0.82)
-	scrim.set_anchors_preset(Control.PRESET_FULL_RECT)
+	scrim.position = Vector2.ZERO
+	scrim.size = Vector2(VIEWPORT_WIDTH, VIEWPORT_HEIGHT)
 	scrim.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(scrim)
 
 	_panel = ColorRect.new()
 	_panel.color = Palette.UI_PANEL
+	_panel.position = PANEL_POSITION
 	_panel.size = PANEL_SIZE
-	_panel.set_anchors_preset(Control.PRESET_CENTER)
-	_panel.position = -PANEL_SIZE * 0.5
 	add_child(_panel)
 
 	_title = Label.new()

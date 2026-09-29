@@ -140,19 +140,32 @@ to; getting hit is a positioning error, not a reflex failure.
 
 ### 10. Enemy design
 
-Two archetypes shipped, both on one 7-state AI
+Four archetypes, all on one shared 7-state AI
 (`IDLE → PATROL → ALERT → CHASE → ATTACK → HURT → DEAD`):
 
 | Enemy | Role | Behaviour |
 |---|---|---|
 | **Palace Guard** | Teaches the combat rules honestly | Grounded melee, patrols, stops at ledges, gives up if you flee far enough |
 | **Shadow Echo** | Punishes relying on the floor | Hovers (ignores gravity), steers in both axes, faster to aggro |
+| **Temporal Sentinel** | Punishes fighting in the open | Hovers at range, fires temporal bolts, retreats when crowded so you must close deliberately or use cover |
+| **The Time Warden** | The final exam | Boss. Permanently shielded and stagger-immune; the shield only drops while a Temporal Echo holds an arena plate |
 
-Both acquire **echoes as valid targets**, so a memory can be used as bait while the
-player repositions. Stats live in `EnemyStats` resources, so variants are data, not
-code.
+The first three all acquire **echoes as valid targets**, so a memory can be used as
+bait while the player repositions. Stats live in `EnemyStats` resources, so variants
+are data, not code — and the ranged behaviour needed no new AI states, only a
+`ranged` flag and one `_fire_attack()` override.
 
-*Planned third archetype:* **Temporal Sentinel** — a ranged threat, deferred.
+**Boss design.** The Warden is not a damage race — it is the game's thesis stated as
+a combat encounter. Its shield nullifies every hit and it never staggers, so
+attrition cannot work. The plate that drops the shield sits far outside its firing
+envelope:
+
+- **Stand on the plate** → you are safe, but you cannot reach the boss.
+- **Fight the boss** → the shield nullifies everything.
+
+The only answer is to leave a memory holding the plate and fight alongside your own
+past. When that echo expires mid-fight, the shield returns and you must author a new
+one under fire.
 
 ---
 
@@ -180,6 +193,25 @@ Neither the player acting alone nor a single-purpose recording can solve it.
 The player must author a route that serves two mechanisms at once — and the moment it
 clicks is the moment the game has taught itself.
 
+**Level 3 — The Broken Courtyard** *(combine)*
+A combat gauntlet with hazards and four enemies, ending on an echo lock: the plate
+that raises the final gate sits on the far side of a lethal temporal rupture, so it
+can only be held by a memory left behind on the way through. Combat and the mechanic
+stop being separate ideas here.
+
+**Level 4 — Clockwork Sanctum** *(challenge)*
+The directive's advanced tier, with the Temporal Echo rules upgraded to a **12-second
+recording window and two simultaneous echoes**. The sanctum door needs **three
+sources live at once** — two plates that must each be held continuously, on opposite
+sides of the room, plus a latched rune that must appear on one of the recording
+routes. With one echo the level is literally impossible, which is the point: the
+upgrade is not a convenience, it is the puzzle.
+
+**Level 5 — The Time Warden** *(payoff)*
+The boss. No level exit exists in the arena — the only way to finish is to defeat the
+Warden, and the only way to hurt the Warden is to leave a memory holding the plate
+that drops its shield.
+
 ---
 
 ### 12. Puzzle design
@@ -204,10 +236,23 @@ A level expresses puzzles declaratively:
 {"type": "door", "id": "door_near", "pos": Vector2(640, 560),
  "params": {"size": Vector2(56, 155)},
  "listens_to": ["plate_near"]}
+
+# Multi-source, all-of wiring — one door, three simultaneous requirements:
+{"type": "door", "id": "sanctum_door", "pos": Vector2(1500, 560),
+ "listens_to": ["sanctum_plate_a", "sanctum_plate_b", "sanctum_rune"],
+ "require_all": true}
 ```
 
-**Rule enforced by design:** no puzzle may be solvable without understanding the echo
-mechanic. If a room can be brute-forced by the player alone, it is not finished.
+Wiring is resolved by string id across **both props and enemies** before any node
+enters the scene tree, so a mechanism never spends its first frame half-wired. The
+boss uses the same mechanism a door does.
+
+**Rules enforced by design:**
+
+1. No puzzle may be solvable without understanding the echo mechanic. If a room can
+   be brute-forced by the player alone, it is not finished.
+2. Enemies never count as plate weights — pressure plates filter to the player and
+   echoes only, so an enemy wandering onto a plate cannot solve a puzzle for you.
 
 ---
 
@@ -287,8 +332,9 @@ The single sentence: **the original used time as pressure; this uses time as a t
 
 Built as a **vertical slice first**, exactly as the directive requires.
 
-- **Delivered:** Phases 0–6 — foundation, player controller, combat, the complete
-  Temporal Echo system, the reusable puzzle framework, and two finished levels.
+- **Delivered:** Phases 0–7 — foundation, player controller, combat, the complete
+  Temporal Echo system, the reusable puzzle framework, four enemy archetypes, five
+  finished levels and the Time Warden boss encounter.
 - **Protocol followed:** inspect → plan → smallest reliable implementation → run →
   fix → regression test → verify → document.
 - **Verification discipline:** nothing is claimed as working that was not executed.
@@ -316,13 +362,15 @@ Built as a **vertical slice first**, exactly as the directive requires.
 
 ### 20. Future expansion
 
-1. **Levels 3–4** — Broken Courtyard (combat + echo combined) and Clockwork Sanctum
-   (multi-mechanism timing puzzles, temporal hazards).
-2. **Time Warden boss** — a short encounter combining combat, platforming and echo
-   use, where the boss itself manipulates your echoes.
-3. **Two-echo puzzles** — using the already-implemented 12 s / 2-echo configuration.
-4. **Temporal Sentinel** — the third enemy archetype, ranged.
-5. **Audio pass** — the direction described in section 14.
-6. **Persistence** — checkpoint and level progress to disk.
-7. **Polish** — sprite animation, camera work, transitions, hit-stop, screen effects.
-8. **Presentation deliverables** — exported builds and the <2 min gameplay capture.
+1. **Audio pass** — the direction described in section 14. The largest remaining
+   gap in perceived quality.
+2. **Persistence** — checkpoint and level progress to disk.
+3. **Playtesting and tuning** — the jump values, enemy health, echo lifetimes and
+   the two-echo timing on Level 4 are derived by arithmetic, not by play. This is the
+   highest-value remaining work.
+4. **A boss that uses echoes against you** — the Warden currently ignores them. A
+   later phase could have it shatter or steal active echoes.
+5. **A three-echo tier** — the rule system already supports arbitrary caps; only
+   content and a level built for it are missing.
+6. **Polish** — sprite animation, camera work, transitions, hit-stop, screen effects.
+7. **Presentation deliverables** — exported builds and the <2 min gameplay capture.

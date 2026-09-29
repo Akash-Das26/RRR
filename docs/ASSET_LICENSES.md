@@ -22,6 +22,10 @@ this record is the evidence that the requirement is met.
 **No asset originating from Prince of Persia (1989), Brøderbund, Jordan Mechner, or
 any later Ubisoft title is present, reproduced, traced, sampled or derived from.**
 
+This record covers all five levels and all four enemy archetypes, including the
+Time Warden boss: the newest of them were authored the same way as the first, drawn
+procedurally from `Palette` at runtime, so the audit below still returns nothing.
+
 ---
 
 ## Visual assets
@@ -36,6 +40,9 @@ rotoscoped or copied.
 | Temporal Echo | `scripts/temporal/temporal_echo.gd` → `_draw()` | Procedural silhouette, trail and aura |
 | Palace Guard | `scripts/enemies/palace_guard.gd` → `_draw_enemy()` | Procedural geometry |
 | Shadow Echo | `scripts/enemies/shadow_echo.gd` → `_draw_enemy()` | Procedural geometry |
+| Temporal Sentinel | `scripts/enemies/temporal_sentinel.gd` → `_draw_enemy()` | Procedural geometry |
+| The Time Warden (boss) | `scripts/enemies/time_warden.gd` → `_draw_enemy()` | Procedural geometry |
+| Projectiles | `scripts/combat/projectile.gd` → `_draw()` | Procedural geometry |
 | Platforms / architecture | `scripts/level/platform.gd` → `_draw()` | Procedural rects + deterministic speckle |
 | Doors | `scripts/objects/door.gd` → `_draw()` | Procedural geometry |
 | Pressure plates | `scripts/objects/pressure_plate.gd` → `_draw()` | Procedural geometry |

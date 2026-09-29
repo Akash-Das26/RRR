@@ -41,15 +41,19 @@ var _trail: Array[Vector2] = []
 
 
 ## Must be called before the node enters the tree.
+##
+## Note the initial frame is deliberately NOT applied here. Setting
+## [member Node2D.global_position] while a node is outside the tree writes its
+## *local* position, so doing it early silently bakes in the container's
+## transform the moment the echo is parented. It is applied in [method _ready]
+## instead, once the global transform actually means something.
 func setup(p_snapshots: Array[TemporalSnapshot], p_config: TemporalConfig) -> void:
 	_snapshots = p_snapshots
 	loop = p_config.loop_echo
 	lifetime = p_config.echo_lifetime
 	_duration = maxf(0.016, _snapshots[-1].time)
 	_life_left = lifetime
-	# Start on the first frame immediately so the echo is never briefly at (0,0).
 	_time = 0.0
-	_apply_frame(0)
 
 
 func _ready() -> void:
@@ -65,6 +69,11 @@ func _ready() -> void:
 	shape.position = Vector2(0, -BODY_HEIGHT * 0.5)
 	add_child(shape)
 	z_index = 5
+
+	# Now that the echo is parented, global_position is meaningful. Snap to the
+	# first recorded frame so it never appears briefly at the origin.
+	_apply_frame(0)
+	queue_redraw()
 
 
 func _physics_process(delta: float) -> void:

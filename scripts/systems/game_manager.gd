@@ -127,8 +127,10 @@ func load_level(index: int) -> void:
 	_checkpoint_position = _level_spawn
 	_checkpoint_id = ""
 
+	# Levels may raise the recording duration or the echo cap. Applied before the
+	# player is spawned so its first capture uses the right rules.
+	TemporalManager.configure_for_level(result.get("temporal", {}))
 	TemporalManager.clear_echoes()
-	TemporalManager.reset_energy()
 	TemporalManager.set_echo_container(builder)
 
 	player = Player.new()
@@ -206,6 +208,9 @@ func _teardown_level() -> void:
 	_checkpoint_id = ""
 	if _hud != null:
 		_hud.bind_player(null)
+		# Reset before the next level is built, so anything the new level sets
+		# during construction survives instead of being wiped here.
+		_hud.reset_for_level()
 	# Freeing the level root frees every child level node with it.
 	if _world != null:
 		_world.queue_free()
