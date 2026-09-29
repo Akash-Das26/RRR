@@ -1,0 +1,20 @@
+# Godot 4+ engine cache and generated files
+.godot/
+/android/
+export_presets.cfg
+*.translation
+
+# Local verification tooling (headless Godot binary downloaded by tooling,
+# never committed — it is a 140 MB build artifact).
+.tools/
+
+# Local build output
+build/
+*.exe
+*.pck
+
+# OS / editor noise
+.DS_Store
+Thumbs.db
+*.swp
+*~

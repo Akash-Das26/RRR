@@ -1,0 +1,53 @@
+; Engine configuration file.
+; Prince of Persia: Echoes of Time
+; RRR — Rewind. Reimagine. Reconnect.
+;
+; Input actions are registered at runtime by res://scripts/systems/input_actions.gd
+; so that the bindings live in one auditable place (see docs/README.md).
+
+config_version=5
+
+[application]
+
+config/name="Prince of Persia: Echoes of Time"
+config/description="A 2D cinematic action-platformer built around a deterministic Temporal Echo mechanic. RRR — Rewind. Reimagine. Reconnect."
+config/version="0.1.0"
+run/main_scene="res://scenes/main/main.tscn"
+config/features=PackedStringArray("4.7", "GL Compatibility")
+config/icon="res://icon.svg"
+
+[autoload]
+
+EventBus="*res://scripts/systems/event_bus.gd"
+GameManager="*res://scripts/systems/game_manager.gd"
+TemporalManager="*res://scripts/temporal/temporal_manager.gd"
+
+[display]
+
+window/size/viewport_width=1280
+window/size/viewport_height=720
+window/stretch/mode="canvas_items"
+window/stretch/aspect="expand"
+
+[layer_names]
+
+2d_physics/layer_1="world"
+2d_physics/layer_2="player_body"
+2d_physics/layer_3="enemy_body"
+2d_physics/layer_4="echo_body"
+2d_physics/layer_5="player_hitbox"
+2d_physics/layer_6="player_hurtbox"
+2d_physics/layer_7="enemy_hitbox"
+2d_physics/layer_8="enemy_hurtbox"
+2d_physics/layer_9="interactable"
+2d_physics/layer_10="hazard"
+
+[physics]
+
+common/physics_ticks_per_second=60
+
+[rendering]
+
+renderer/rendering_method="gl_compatibility"
+renderer/rendering_method.mobile="gl_compatibility"
+environment/defaults/default_clear_color=Color(0.043, 0.035, 0.062, 1)
