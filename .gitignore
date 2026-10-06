@@ -5,7 +5,7 @@ export_presets.cfg
 *.translation
 
 # Local verification tooling (headless Godot binary downloaded by tooling,
-# never committed — it is a 140 MB build artifact).
+# never committed — it is a build artifact).
 .tools/
 
 # Local build output
@@ -18,3 +18,14 @@ build/
 Thumbs.db
 *.swp
 *~
+
+# ----------------------------------------------------------------------
+# Study references (local behavioral study only — plan section 2.3/2.4).
+# Kept on disk for analysis; must not be committed to the public repo.
+# 4dprinceprsia/ — DOS "4D Prince of Persia" data (Brøderbund-era assets,
+#                   no licence; all-rights-reserved; study only).
+# SDLPoP-1.23/  — SDLPoP v1.23 C port (GPL-3; study only, never copied).
+# Study output under study/ is notes, not playable level data.
+# ----------------------------------------------------------------------
+4dprinceprsia/
+SDLPoP-1.23/
